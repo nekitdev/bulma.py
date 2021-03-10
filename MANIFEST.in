@@ -1,0 +1,14 @@
+include README.rst
+include LICENSE
+
+prune bulma/bulma
+graft bulma/bulma/sass
+
+prune bulma/extensions
+
+graft bulma/extensions/*/dist
+graft bulma/extensions/*/src
+
+prune bulma/extensions/*/src/docs
+prune bulma/extensions/*/src/demo
+

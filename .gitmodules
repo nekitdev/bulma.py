@@ -1,0 +1,33 @@
+[submodule "bulma/bulma"]
+	path = bulma/bulma
+	url = https://github.com/jgthms/bulma.git
+[submodule "bulma/extensions/bulma-quickview"]
+	path = bulma/extensions/bulma-quickview
+	url = https://github.com/Wikiki/bulma-quickview.git
+[submodule "bulma/extensions/bulma-pricingtable"]
+	path = bulma/extensions/bulma-pricingtable
+	url = https://github.com/Wikiki/bulma-pricingtable.git
+[submodule "bulma/extensions/bulma-slider"]
+	path = bulma/extensions/bulma-slider
+	url = https://github.com/Wikiki/bulma-slider.git
+[submodule "bulma/extensions/bulma-checkradio"]
+	path = bulma/extensions/bulma-checkradio
+	url = https://github.com/Wikiki/bulma-checkradio.git
+[submodule "bulma/extensions/bulma-switch"]
+	path = bulma/extensions/bulma-switch
+	url = https://github.com/Wikiki/bulma-switch.git
+[submodule "bulma/extensions/bulma-steps"]
+	path = bulma/extensions/bulma-steps
+	url = https://github.com/Wikiki/bulma-steps.git
+[submodule "bulma/extensions/bulma-badge"]
+	path = bulma/extensions/bulma-badge
+	url = https://github.com/CreativeBulma/bulma-badge.git
+[submodule "bulma/extensions/bulma-tooltip"]
+	path = bulma/extensions/bulma-tooltip
+	url = https://github.com/CreativeBulma/bulma-tooltip.git
+[submodule "bulma/extensions/bulma-tagsinput"]
+	path = bulma/extensions/bulma-tagsinput
+	url = https://github.com/CreativeBulma/bulma-tagsinput.git
+[submodule "bulma/extensions/bulma-toast"]
+	path = bulma/extensions/bulma-toast
+	url = https://github.com/rfoel/bulma-toast.git
