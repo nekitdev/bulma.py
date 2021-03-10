@@ -1,6 +1,8 @@
 include README.rst
 include LICENSE
 
+include requirements.txt
+
 prune bulma/bulma
 graft bulma/bulma/sass
 
