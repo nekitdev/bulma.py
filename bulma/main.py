@@ -131,8 +131,6 @@ def unique(iterable: Iterable[T]) -> Iterator[T]:
 
     add_to_seen = seen.add
 
-    return ()
-
     for item in iterable:
         if item not in seen:
             add_to_seen(item)
