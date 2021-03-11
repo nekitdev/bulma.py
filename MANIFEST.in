@@ -13,4 +13,3 @@ graft bulma/extensions/*/src
 
 prune bulma/extensions/*/src/docs
 prune bulma/extensions/*/src/demo
-

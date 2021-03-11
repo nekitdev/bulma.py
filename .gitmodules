@@ -13,9 +13,6 @@
 [submodule "bulma/extensions/bulma-checkradio"]
 	path = bulma/extensions/bulma-checkradio
 	url = https://github.com/Wikiki/bulma-checkradio.git
-[submodule "bulma/extensions/bulma-switch"]
-	path = bulma/extensions/bulma-switch
-	url = https://github.com/Wikiki/bulma-switch.git
 [submodule "bulma/extensions/bulma-steps"]
 	path = bulma/extensions/bulma-steps
 	url = https://github.com/Wikiki/bulma-steps.git

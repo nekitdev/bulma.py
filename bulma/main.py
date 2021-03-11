@@ -39,7 +39,13 @@ EMPTY = ""
 UNDERSCORE = "_"
 NEWLINE = "\n"
 
+
+def is_private(string: str) -> bool:
+    return string.startswith(UNDERSCORE)
+
+
 # simple code templates that we are going to use
+COMMENT_VARIABLE = "/* theme variables */"
 UTF_8 = "utf-8"
 CHARSET = f"@charset {UTF_8!r};"
 IMPORT = "@import {path!r};"
@@ -65,13 +71,13 @@ SASS_PATTERNS = (  # relative path in the extension -> glob pattern
     (Path("dist"), "*.sass"),
     (Path("dist"), "*.min.css"),
     (Path("dist"), "*.css"),
-    (Path(""), "*.s[ac]ss"),
 )
 
 MIN_JS_PATTERN = "*.min.js"
 JS_PATTERN = "*.js"
 
 CSS_SUFFIX = ".css"
+TEST_SUFFIX = ".test"
 
 # different output styles
 NESTED = "nested"
@@ -282,11 +288,12 @@ class Compiler:
 
         yield CHARSET
         yield EMPTY
+        yield COMMENT_VARIABLE
+        yield from self.generate_variables(variables)
+        yield EMPTY
         yield from self.get_bulma_imports()
         yield EMPTY
         yield from self.get_extension_imports()
-        yield EMPTY
-        yield from self.generate_variables(variables)
         yield EMPTY
 
     def generate_themes(self) -> Iterator[Iterator[str]]:
@@ -374,7 +381,8 @@ class Compiler:
                 if pattern.endswith(CSS_SUFFIX):
                     path = path.with_suffix(EMPTY)
 
-                yield path.relative_to(self.path)
+                if path.name == ALL or not is_private(path.name):
+                    yield path.relative_to(self.path)
 
     def get_sass_files(self, extension_path: Path) -> Iterator[Path]:
         return unique(self.get_sass_files_impl(extension_path))
@@ -384,6 +392,7 @@ class Compiler:
 
         files = (
             file.relative_to(self.path) for file in path.rglob(JS_PATTERN)
+            if TEST_SUFFIX not in file.suffixes  # exclude test files
         )
 
         if self.minified:  # if we need to minify...
