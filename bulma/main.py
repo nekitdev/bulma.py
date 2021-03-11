@@ -56,9 +56,6 @@ INCLUDE_JS = """
 <script defer type="text/javascript" src="{js}"></script>
 """.strip()
 
-# some html templates to include themes and scripts
-
-
 # other things used in different utilities
 SASS_PATTERNS = (  # relative path in the extension -> glob pattern
     (Path("src/sass"), "_all.sass"),
