@@ -255,8 +255,11 @@ class Compiler:
 
     def get_bulma_imports(self) -> Iterator[str]:
         for path in self.bulma_path.iterdir():
-            if path.is_dir():
+            if path.is_dir() and path.name != UTILITIES:
                 yield IMPORT.format(path=(path / ALL).relative_to(self.path).as_posix())
+
+    def get_bulma_utilities(self) -> str:
+        return IMPORT.format(path=(self.bulma_path / UTILITIES / ALL).relative_to(self.path).as_posix())
 
     def get_extension_imports(self) -> Iterator[str]:
         for extension in (self.path / EXTENSIONS).iterdir():
@@ -287,6 +290,8 @@ class Compiler:
             variables.update(self.get_theme_variables(theme))
 
         yield CHARSET
+        yield EMPTY
+        yield self.get_bulma_utilities()
         yield EMPTY
         yield COMMENT_VARIABLE
         yield from self.generate_variables(variables)
