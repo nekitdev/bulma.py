@@ -1,7 +1,9 @@
 from functools import wraps
 from operator import attrgetter as get_attr
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, Iterator, Optional, Set, TypeVar, Union
+from typing import (
+    Any, Callable, Dict, Iterable, Iterator, MutableSequence, Optional, Set, TypeVar, Union
+)
 
 import sass  # type: ignore
 
@@ -12,6 +14,7 @@ __all__ = (
     "COMPACT",
     "COMPRESSED",
     "Compiler",
+    "Include",
     "Settings",
     "run",
 )
@@ -27,14 +30,17 @@ CUSTOM = "custom"
 DIST = "dist"
 
 ALL = "_all"
+DEMO = "demo"
 EXTENSIONS = "extensions"
 UTILITIES = "utilities"
 
 CSS = "css"
+JS = "js"
 SASS = "sass"
 SCSS = "scss"
 
 # empty string and newline to use
+DOT = "."
 EMPTY = ""
 UNDERSCORE = "_"
 NEWLINE = "\n"
@@ -44,23 +50,20 @@ def is_private(string: str) -> bool:
     return string.startswith(UNDERSCORE)
 
 
+def get_name(name: str) -> str:
+    name, dot, rest = name.partition(DOT)
+
+    return name
+
+
 # simple code templates that we are going to use
 COMMENT_VARIABLE = "/* theme variables */"
+COMMENT_SOURCE = "/* source */"
+
 UTF_8 = "utf-8"
 CHARSET = f"@charset {UTF_8!r};"
 IMPORT = "@import {path!r};"
 VARIABLE = "${name}: {value};"
-
-# we should better preload our style sheet
-INCLUDE_CSS = """
-<link rel="preload" href="{css}" as="style">
-<link rel="stylesheet" href="{css}">
-""".strip()
-
-# and scripts can be deferred so that the page can load nicely
-INCLUDE_JS = """
-<script defer type="text/javascript" src="{js}"></script>
-""".strip()
 
 # other things used in different utilities
 SASS_PATTERNS = (  # relative path in the extension -> glob pattern
@@ -71,10 +74,11 @@ SASS_PATTERNS = (  # relative path in the extension -> glob pattern
     (Path("dist"), "*.sass"),
     (Path("dist"), "*.min.css"),
     (Path("dist"), "*.css"),
+    (Path(""), "*.s[ac]ss"),
 )
 
 MIN_JS_PATTERN = "*.min.js"
-JS_PATTERN = "*.js"
+JS_PATTERN = "*[!min].js"
 
 CSS_SUFFIX = ".css"
 TEST_SUFFIX = ".test"
@@ -119,8 +123,9 @@ SETTINGS = Settings(
     custom=[],  # custom files to compile and include
     extensions=[],  # extensions to load
     minified=True,  # whether to prefer minified javascript files
+    source=EMPTY,  # additional source to include before compiling
     themes=[],  # themes to use
-    token="",  # font awesome token
+    token=EMPTY,  # font awesome token
     variables={},  # variables to use globally
     output_style=NESTED,  # style for compilation output
 )
@@ -190,6 +195,43 @@ def cache_by(*names: str) -> Callable[[Callable[..., T]], Callable[..., T]]:
     return decorator
 
 
+INCLUDE_CSS = """
+<link rel="preload" href="{css}" as="style">
+<link rel="stylesheet" href="{css}">
+""".strip()
+
+INCLUDE_JS = """
+<script defer src="{js}"></script>
+""".strip()
+
+
+class Include:
+    def __init__(self, css: MutableSequence[str], js: MutableSequence[str]) -> None:
+        self.css = css
+        self.js = js
+
+    def include_css(self, css: str) -> str:
+        return INCLUDE_CSS.format(css=css)
+
+    def include_js(self, js: str) -> str:
+        return INCLUDE_JS.format(js=js)
+
+    def generate_include(self, static: Union[str, Path] = None) -> Iterator[str]:
+        if static is None:
+            static = Path()
+
+        static = Path(static)
+
+        for css in self.css:
+            yield self.include_css((static / css).as_posix())
+
+        for js in self.js:
+            yield self.include_js((static / js).as_posix())
+
+    def compile_include(self, static: Union[str, Path] = None) -> str:
+        return NEWLINE.join(self.generate_include(static))
+
+
 class Compiler:
     def __init__(self, settings: Optional[Settings] = None) -> None:
         actual_settings = SETTINGS.copy()
@@ -246,6 +288,10 @@ class Compiler:
         return self.settings.minified
 
     @property
+    def source(self) -> str:
+        return self.settings.source
+
+    @property
     def token(self) -> str:
         return self.settings.token
 
@@ -267,22 +313,6 @@ class Compiler:
                 for path in self.get_sass_files(extension):
                     yield IMPORT.format(path=path.as_posix())
 
-    def get_required_js_files(self) -> Iterator[str]:
-        for extension in (self.path / EXTENSIONS).iterdir():
-            if self.is_enabled_path(extension):
-                for path in self.get_js_files(extension):
-                    yield path.as_posix()
-
-    def include_css(self, css: str) -> str:
-        return INCLUDE_CSS.format(css=css)
-
-    def include_js(self, js: str) -> str:
-        return INCLUDE_JS.format(js=js)
-
-    def include_required(self) -> Iterator[str]:
-        for required in self.get_required_js_files():
-            yield self.include_js(required)
-
     def generate_theme(self, theme: Optional[str] = None) -> Iterator[str]:
         variables = self.variables.copy()
 
@@ -292,6 +322,8 @@ class Compiler:
         yield CHARSET
         yield EMPTY
         yield self.get_bulma_utilities()
+        yield EMPTY
+        yield from self.source.splitlines()
         yield EMPTY
         yield COMMENT_VARIABLE
         yield from self.generate_variables(variables)
@@ -350,6 +382,23 @@ class Compiler:
         for theme in self.themes:
             yield self.save_theme(theme, root=root)
 
+    def save_required_js_files(self, root: Optional[Union[str, Path]] = None) -> Iterator[str]:
+        if root is None:
+            root = self.path
+
+        root = Path(root)
+
+        (root / JS).mkdir(exist_ok=True)  # make sure we have the directory created
+
+        for source in self.get_required_js_files():
+            destination = root / JS / source.name
+
+            destination.touch()
+
+            destination.write_text(source.read_text(UTF_8), UTF_8)
+
+            yield destination.relative_to(root).as_posix()
+
     def compile_path(self, path: Union[str, Path]) -> str:
         return sass.compile(
             string=IMPORT.format(path=Path(path).as_posix(), output_style=self.output_style)
@@ -376,6 +425,14 @@ class Compiler:
 
             yield path.relative_to(root).as_posix()
 
+    def save(self, root: Optional[Union[str, Path]] = None) -> Include:
+        themes = list(self.save_themes(root))
+        custom = list(self.save_custom_css(root))
+
+        js = list(self.save_required_js_files(root))
+
+        return Include(css=themes + custom, js=js)
+
     def get_custom_files(self) -> Iterator[Path]:
         for path in self.custom:
             yield Path(path)
@@ -386,7 +443,9 @@ class Compiler:
                 if pattern.endswith(CSS_SUFFIX):
                     path = path.with_suffix(EMPTY)
 
-                if path.name == ALL or not is_private(path.name):
+                name = get_name(path.name)
+
+                if (name == ALL or not is_private(name)) and name != DEMO:
                     yield path.relative_to(self.path)
 
     def get_sass_files(self, extension_path: Path) -> Iterator[Path]:
@@ -396,18 +455,23 @@ class Compiler:
         path = extension_path / DIST
 
         files = (
-            file.relative_to(self.path) for file in path.rglob(JS_PATTERN)
+            file for file in path.rglob(JS_PATTERN)
             if TEST_SUFFIX not in file.suffixes  # exclude test files
         )
 
         if self.minified:  # if we need to minify...
             minified_files = {
-                minified_file.name: minified_file.relative_to(self.path)
+                get_name(minified_file.name): minified_file
                 for minified_file in path.rglob(MIN_JS_PATTERN)
             }
 
             for file in files:  # ... go through normal files and yield minified versions, if found
-                yield minified_files.get(file.name, file)
+                yield minified_files.get(get_name(file.name), file)
 
         else:
             yield from files
+
+    def get_required_js_files(self) -> Iterator[Path]:
+        for extension in (self.path / EXTENSIONS).iterdir():
+            if self.is_enabled_path(extension):
+                yield from self.get_js_files(extension)
