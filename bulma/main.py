@@ -30,8 +30,17 @@ CUSTOM = "custom"
 DIST = "dist"
 
 ALL = "_all"
+
 DEMO = "demo"
+
 EXTENSIONS = "extensions"
+
+FUNCTIONS = "functions"
+INITIAL_VARIABLES = "initial-variables"
+
+INITIAL = (INITIAL_VARIABLES, FUNCTIONS)
+MOVED = {"animations"}
+
 UTILITIES = "utilities"
 
 CSS = "css"
@@ -56,9 +65,7 @@ def get_name(name: str) -> str:
     return name
 
 
-# simple code templates that we are going to use
-COMMENT_VARIABLE = "/* theme variables */"
-COMMENT_SOURCE = "/* source */"
+# simple code templates we are going to use
 
 UTF_8 = "utf-8"
 CHARSET = f"@charset {UTF_8!r};"
@@ -123,7 +130,6 @@ SETTINGS = Settings(
     custom=[],  # custom files to compile and include
     extensions=[],  # extensions to load
     minified=True,  # whether to prefer minified javascript files
-    source=EMPTY,  # additional source to include before compiling
     themes=[],  # themes to use
     token=EMPTY,  # font awesome token
     variables={},  # variables to use globally
@@ -206,30 +212,71 @@ INCLUDE_JS = """
 
 
 class Include:
-    def __init__(self, css: MutableSequence[str], js: MutableSequence[str]) -> None:
-        self.css = css
-        self.js = js
+    def __init__(
+        self,
+        themes: MutableSequence[str],
+        custom: MutableSequence[str],
+        script: MutableSequence[str],
+        static: Optional[Union[str, Path]] = None,
+    ) -> None:
+        self.themes = themes
+        self.custom = custom
+        self.script = script
 
-    def include_css(self, css: str) -> str:
-        return INCLUDE_CSS.format(css=css)
-
-    def include_js(self, js: str) -> str:
-        return INCLUDE_JS.format(js=js)
-
-    def generate_include(self, static: Union[str, Path] = None) -> Iterator[str]:
         if static is None:
             static = Path()
 
-        static = Path(static)
+        self.static = Path(static)
 
-        for css in self.css:
-            yield self.include_css((static / css).as_posix())
+    def with_static(self, static: Union[str, Path]) -> "Include":
+        self.static = Path(static)
 
-        for js in self.js:
-            yield self.include_js((static / js).as_posix())
+        return self
 
-    def compile_include(self, static: Union[str, Path] = None) -> str:
-        return NEWLINE.join(self.generate_include(static))
+    def include_css(self, css: str) -> str:
+        return INCLUDE_CSS.format(css=(self.static / css).as_posix())
+
+    def include_js(self, js: str) -> str:
+        return INCLUDE_JS.format(js=(self.static / js).as_posix())
+
+    def find_theme(self, theme: Optional[str] = None) -> str:
+        if theme is None:
+            name = BULMA_CSS
+
+        else:
+            name = THEME_CSS.format(theme=theme)
+
+        for file in self.themes:
+            if Path(file).name == name:
+                return file
+
+        raise RuntimeError(f"Can not find {theme!r} theme.")
+
+    def find_theme_as_include(self, theme: Optional[str] = None) -> str:
+        return (self.static / self.find_theme(theme)).as_posix()
+
+    def include_theme(self, theme: Optional[str] = None) -> str:
+        return self.include_css(self.find_theme())
+
+    def generate_custom(self) -> Iterator[str]:
+        yield from map(self.include_css, self.custom)
+
+    def include_custom(self) -> str:
+        return NEWLINE.join(self.generate_custom())
+
+    def generate_script(self) -> Iterator[str]:
+        yield from map(self.include_js, self.script)
+
+    def include_script(self) -> str:
+        return NEWLINE.join(self.generate_script())
+
+    def generate_all(self, theme: Optional[str] = None) -> Iterator[str]:
+        yield self.include_theme(theme)
+        yield from self.generate_custom()
+        yield from self.generate_script()
+
+    def include_all(self, theme: Optional[str] = None) -> str:
+        return NEWLINE.join(self.generate_all(theme))
 
 
 class Compiler:
@@ -288,10 +335,6 @@ class Compiler:
         return self.settings.minified
 
     @property
-    def source(self) -> str:
-        return self.settings.source
-
-    @property
     def token(self) -> str:
         return self.settings.token
 
@@ -304,8 +347,22 @@ class Compiler:
             if path.is_dir() and path.name != UTILITIES:
                 yield IMPORT.format(path=(path / ALL).relative_to(self.path).as_posix())
 
-    def get_bulma_utilities(self) -> str:
-        return IMPORT.format(path=(self.bulma_path / UTILITIES / ALL).relative_to(self.path).as_posix())
+    def get_bulma_initial(self) -> Iterator[str]:
+        for name in INITIAL:
+            yield IMPORT.format(
+                path=(self.bulma_path / UTILITIES / name).relative_to(self.path).as_posix()
+            )
+
+    def get_bulma_derived(self) -> Iterator[str]:
+        exclude = set(INITIAL) | MOVED
+
+        for path in (self.bulma_path / UTILITIES).iterdir():
+            name = get_name(path.name)
+
+            if name not in exclude:
+                yield IMPORT.format(
+                    path=(self.bulma_path / UTILITIES / name).relative_to(self.path).as_posix()
+                )
 
     def get_extension_imports(self) -> Iterator[str]:
         for extension in (self.path / EXTENSIONS).iterdir():
@@ -321,12 +378,11 @@ class Compiler:
 
         yield CHARSET
         yield EMPTY
-        yield self.get_bulma_utilities()
+        yield from self.get_bulma_initial()
         yield EMPTY
-        yield from self.source.splitlines()
-        yield EMPTY
-        yield COMMENT_VARIABLE
         yield from self.generate_variables(variables)
+        yield EMPTY
+        yield from self.get_bulma_derived()
         yield EMPTY
         yield from self.get_bulma_imports()
         yield EMPTY
@@ -429,9 +485,9 @@ class Compiler:
         themes = list(self.save_themes(root))
         custom = list(self.save_custom_css(root))
 
-        js = list(self.save_required_js_files(root))
+        script = list(self.save_required_js_files(root))
 
-        return Include(css=themes + custom, js=js)
+        return Include(themes=themes, custom=custom, script=script)
 
     def get_custom_files(self) -> Iterator[Path]:
         for path in self.custom:
