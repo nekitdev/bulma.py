@@ -8,6 +8,8 @@ graft bulma/bulma/sass
 
 prune bulma/extensions
 
+recursive-include bulma/extensions *.sass *.scss
+
 graft bulma/extensions/*/dist
 graft bulma/extensions/*/src
 
