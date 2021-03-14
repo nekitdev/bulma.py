@@ -131,7 +131,6 @@ SETTINGS = Settings(
     extensions=[],  # extensions to load
     minified=True,  # whether to prefer minified javascript files
     themes=[],  # themes to use
-    token=EMPTY,  # font awesome token
     variables={},  # variables to use globally
     output_style=NESTED,  # style for compilation output
 )
@@ -333,10 +332,6 @@ class Compiler:
     @property
     def minified(self) -> bool:
         return self.settings.minified
-
-    @property
-    def token(self) -> str:
-        return self.settings.token
 
     def generate_variables(self, variables: Dict[str, Any]) -> Iterator[str]:
         for name, value in variables.items():
