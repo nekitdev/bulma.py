@@ -3,6 +3,8 @@ include LICENSE
 
 include requirements.txt
 
+include bulma/py.typed
+
 prune bulma/bulma
 graft bulma/bulma/sass
 
