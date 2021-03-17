@@ -2,6 +2,6 @@ __title__ = "bulma"
 __author__ = "nekitdev"
 __copyright__ = "Copyright 2021 nekitdev"
 __license__ = "MIT"
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 from bulma.main import *  # noqa

@@ -70,9 +70,9 @@ Below is an example of compiling the default theme with all extensions.
         )
     )
 
-    path = compiler.save_theme(root=folder)
+    include = compiler.save(folder)
 
-    print(f"saved to {path!r}")
+    print(f"saved to {include.find_theme_relative()}")
 
 Authors
 -------

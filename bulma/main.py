@@ -130,6 +130,7 @@ SETTINGS = Settings(
     custom=[],  # custom files to compile and include
     extensions=[],  # extensions to load
     minified=True,  # whether to prefer minified javascript files
+    override=EMPTY,  # sass or scss string to add after bulma imports
     themes=[],  # themes to use
     variables={},  # variables to use globally
     output_style=NESTED,  # style for compilation output
@@ -232,13 +233,22 @@ class Include:
 
         return self
 
+    def get_path(self, path: str) -> Path:
+        return self.static / path
+
+    def include_css_relative(self, css: str) -> str:
+        return self.include_css(self.get_path(css).as_posix())
+
     def include_css(self, css: str) -> str:
-        return INCLUDE_CSS.format(css=(self.static / css).as_posix())
+        return INCLUDE_CSS.format(css=css)
+
+    def include_js_relative(self, js: str) -> str:
+        return self.include_js(self.get_path(js).as_posix())
 
     def include_js(self, js: str) -> str:
-        return INCLUDE_JS.format(js=(self.static / js).as_posix())
+        return INCLUDE_JS.format(js=js)
 
-    def find_theme(self, theme: Optional[str] = None) -> str:
+    def find_theme_relative(self, theme: Optional[str] = None) -> str:
         if theme is None:
             name = BULMA_CSS
 
@@ -251,20 +261,20 @@ class Include:
 
         raise RuntimeError(f"Can not find {theme!r} theme.")
 
-    def find_theme_as_include(self, theme: Optional[str] = None) -> str:
-        return (self.static / self.find_theme(theme)).as_posix()
+    def find_theme(self, theme: Optional[str] = None) -> str:
+        return self.get_path(self.find_theme_relative(theme)).as_posix()
 
     def include_theme(self, theme: Optional[str] = None) -> str:
-        return self.include_css(self.find_theme())
+        return self.include_css_relative(self.find_theme_relative(theme))
 
     def generate_custom(self) -> Iterator[str]:
-        yield from map(self.include_css, self.custom)
+        yield from map(self.include_css_relative, self.custom)
 
     def include_custom(self) -> str:
         return NEWLINE.join(self.generate_custom())
 
     def generate_script(self) -> Iterator[str]:
-        yield from map(self.include_js, self.script)
+        yield from map(self.include_js_relative, self.script)
 
     def include_script(self) -> str:
         return NEWLINE.join(self.generate_script())
@@ -333,6 +343,10 @@ class Compiler:
     def minified(self) -> bool:
         return self.settings.minified
 
+    @property
+    def override(self) -> str:
+        return self.settings.override
+
     def generate_variables(self, variables: Dict[str, Any]) -> Iterator[str]:
         for name, value in variables.items():
             yield VARIABLE.format(name=name, value=value)
@@ -363,7 +377,7 @@ class Compiler:
         for extension in (self.path / EXTENSIONS).iterdir():
             if self.is_enabled_path(extension):
                 for path in self.get_sass_files(extension):
-                    yield IMPORT.format(path=path.as_posix())
+                    yield IMPORT.format(path=path.relative_to(self.path).as_posix())
 
     def generate_theme(self, theme: Optional[str] = None) -> Iterator[str]:
         variables = self.variables.copy()
@@ -380,6 +394,8 @@ class Compiler:
         yield from self.get_bulma_derived()
         yield EMPTY
         yield from self.get_bulma_imports()
+        yield EMPTY
+        yield from self.override.splitlines()
         yield EMPTY
         yield from self.get_extension_imports()
         yield EMPTY
@@ -405,7 +421,7 @@ class Compiler:
 
     def save_theme(
         self, theme: Optional[str] = None, root: Optional[Union[str, Path]] = None
-    ) -> str:
+    ) -> Path:
         output = self.compile_theme(theme)
 
         if root is None:
@@ -423,17 +439,34 @@ class Compiler:
 
         path.write_text(output, encoding=UTF_8)
 
-        return path.relative_to(root).as_posix()
+        return path
+
+    def save_theme_relative(
+        self, theme: Optional[str] = None, root: Optional[Union[str, Path]] = None
+    ) -> str:
+        if root is None:
+            root = self.path
+
+        return self.save_theme(theme, root).relative_to(root).as_posix()
 
     def save_themes(
         self, root: Optional[Union[str, Path]] = None
-    ) -> Iterator[str]:
-        yield self.save_theme(root=root)
+    ) -> Iterator[Path]:
+        yield self.save_theme(None, root)
 
         for theme in self.themes:
-            yield self.save_theme(theme, root=root)
+            yield self.save_theme(theme, root)
 
-    def save_required_js_files(self, root: Optional[Union[str, Path]] = None) -> Iterator[str]:
+    def save_themes_relative(
+        self, root: Optional[Union[str, Path]] = None
+    ) -> Iterator[str]:
+        if root is None:
+            root = self.path
+
+        for theme in self.save_themes(root):
+            yield theme.relative_to(root).as_posix()
+
+    def save_required_js_files(self, root: Optional[Union[str, Path]] = None) -> Iterator[Path]:
         if root is None:
             root = self.path
 
@@ -448,7 +481,16 @@ class Compiler:
 
             destination.write_text(source.read_text(UTF_8), UTF_8)
 
-            yield destination.relative_to(root).as_posix()
+            yield destination
+
+    def save_required_js_files_relative(
+        self, root: Optional[Union[str, Path]] = None
+    ) -> Iterator[str]:
+        if root is None:
+            root = self.path
+
+        for path in self.save_required_js_files(root):
+            yield path.relative_to(root).as_posix()
 
     def compile_path(self, path: Union[str, Path]) -> str:
         return sass.compile(
@@ -459,7 +501,7 @@ class Compiler:
         for path in self.get_custom_files():
             yield self.compile_path(path)
 
-    def save_custom_css(self, root: Optional[Union[str, Path]] = None) -> Iterator[str]:
+    def save_custom_css(self, root: Optional[Union[str, Path]] = None) -> Iterator[Path]:
         if root is None:
             root = self.path
 
@@ -474,13 +516,20 @@ class Compiler:
 
             path.write_text(output, encoding=UTF_8)
 
+            yield path
+
+    def save_custom_css_relative(self, root: Optional[Union[str, Path]] = None) -> Iterator[str]:
+        if root is None:
+            root = self.path
+
+        for path in self.save_custom_css(root):
             yield path.relative_to(root).as_posix()
 
     def save(self, root: Optional[Union[str, Path]] = None) -> Include:
-        themes = list(self.save_themes(root))
-        custom = list(self.save_custom_css(root))
+        themes = list(self.save_themes_relative(root))
+        custom = list(self.save_custom_css_relative(root))
 
-        script = list(self.save_required_js_files(root))
+        script = list(self.save_required_js_files_relative(root))
 
         return Include(themes=themes, custom=custom, script=script)
 
@@ -488,7 +537,7 @@ class Compiler:
         for path in self.custom:
             yield Path(path)
 
-    def get_sass_files_impl(self, extension_path: Path) -> Iterator[Path]:
+    def get_sass_files_dirty(self, extension_path: Path) -> Iterator[Path]:
         for relative_path, pattern in SASS_PATTERNS:
             for path in (extension_path / relative_path).rglob(pattern):
                 if pattern.endswith(CSS_SUFFIX):
@@ -497,10 +546,10 @@ class Compiler:
                 name = get_name(path.name)
 
                 if (name == ALL or not is_private(name)) and name != DEMO:
-                    yield path.relative_to(self.path)
+                    yield path
 
     def get_sass_files(self, extension_path: Path) -> Iterator[Path]:
-        return unique(self.get_sass_files_impl(extension_path))
+        return unique(self.get_sass_files_dirty(extension_path))
 
     def get_js_files(self, extension_path: Path) -> Iterator[Path]:
         path = extension_path / DIST
