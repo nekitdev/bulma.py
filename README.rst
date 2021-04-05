@@ -60,14 +60,12 @@ Below is an example of compiling the default theme with all extensions.
 
 .. code:: python
 
-    from bulma import EXPANDED, FIND, Compiler, Settings
+    from bulma import EXPANDED, FIND, Compiler
 
     folder = "."
 
     compiler = Compiler(
-        settings=Settings(
-            extensions=FIND, output_style=EXPANDED
-        )
+        extensions=FIND, output_style=EXPANDED
     )
 
     include = compiler.save(folder)

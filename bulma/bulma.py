@@ -1,9 +1,5 @@
-from functools import wraps
-from operator import attrgetter as get_attr
 from pathlib import Path
-from typing import (
-    Any, Callable, Dict, Iterable, Iterator, MutableSequence, Optional, Set, TypeVar, Union
-)
+from typing import Any, Dict, Iterable, Iterator, MutableSequence, Optional, Set, TypeVar, Union
 
 import sass  # type: ignore
 
@@ -15,7 +11,6 @@ __all__ = (
     "COMPRESSED",
     "Compiler",
     "Include",
-    "Settings",
     "run",
 )
 
@@ -103,40 +98,6 @@ FIND = "find"
 THEME_VARIABLES = "{theme}_variables"
 
 
-S = TypeVar("S", bound="Settings")
-
-
-class Settings(Dict[str, Any]):
-    def __getattr__(self, name: str) -> Any:
-        if name in self:
-            return self[name]
-
-        raise AttributeError(name)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        self_dict = self.__dict__
-
-        if name in self_dict:
-            self_dict[name] = value
-
-        else:
-            self[name] = value
-
-    def copy(self: S) -> S:
-        return self.__class__(self)
-
-
-SETTINGS = Settings(
-    custom=[],  # custom files to compile and include
-    extensions=[],  # extensions to load
-    minified=True,  # whether to prefer minified javascript files
-    override=EMPTY,  # sass or scss string to add after bulma imports
-    themes=[],  # themes to use
-    variables={},  # variables to use globally
-    output_style=NESTED,  # style for compilation output
-)
-
-
 T = TypeVar("T")
 
 
@@ -157,50 +118,6 @@ def run(iterator: Iterator[T]) -> None:
         pass
 
 
-def cache_by(*names: str) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Cache function result by object's attributes given by names."""
-
-    if not names:
-        raise ValueError("@cache_by requires at least one name to be provided.")
-
-    def decorator(function: Callable[..., T]) -> Callable[..., T]:
-        get_attrs = tuple(get_attr(name) for name in names)
-
-        name = function.__name__
-
-        if not name.isidentifier():
-            name = f"unnamed_{id(function):x}"
-
-        cached_attr = f"_{name}_cached"
-        cached_by_attr = f"_{name}_cached_by"
-
-        @wraps(function)
-        def wrapper(self, *args, **kwargs) -> T:
-            actual = tuple(get_attr(self) for get_attr in get_attrs)
-
-            try:
-                cached = getattr(self, cached_attr)
-                cached_by = getattr(self, cached_by_attr)
-
-            except AttributeError:
-                pass
-
-            else:
-                if actual == cached_by:
-                    return cached
-
-            result = function(self, *args, **kwargs)
-
-            setattr(self, cached_attr, result)
-            setattr(self, cached_by_attr, actual)
-
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 INCLUDE_CSS = """
 <link rel="preload" href="{css}" as="style">
 <link rel="stylesheet" href="{css}">
@@ -209,6 +126,9 @@ INCLUDE_CSS = """
 INCLUDE_JS = """
 <script defer src="{js}"></script>
 """.strip()
+
+
+IT = TypeVar("IT", bound="Include")
 
 
 class Include:
@@ -228,7 +148,7 @@ class Include:
 
         self.static = Path(static)
 
-    def with_static(self, static: Union[str, Path]) -> "Include":
+    def with_static(self: IT, static: Union[str, Path]) -> IT:
         self.static = Path(static)
 
         return self
@@ -289,21 +209,52 @@ class Include:
 
 
 class Compiler:
-    def __init__(self, settings: Optional[Settings] = None) -> None:
-        actual_settings = SETTINGS.copy()
+    def __init__(
+        self,
+        extensions: Union[str, Iterable[str]] = (),  # extensions to load
+        themes: Iterable[str] = (),  # themes to use
+        variables: Optional[Dict[str, Any]] = None,  # variables to use globally
+        override: str = EMPTY,  # sass or scss string to add after bulma imports
+        minified: bool = True,  # whether to prefer minified javascript files
+        output_style: str = NESTED,  # style for compilation output
+        custom: Iterable[str] = (),  # custom files to compile and include
+        **settings: Any,  # other settings to apply
+    ) -> None:
+        self._settings = settings
 
-        if settings:
-            actual_settings.update(settings)
+        if variables is None:
+            variables = {}
 
-        self.settings = actual_settings
+        self._extensions = extensions
+        self._themes = themes
 
-        self.path = PATH
-        self.bulma_path = PATH / BULMA / SASS
+        self._variables = variables
 
-    @property  # type: ignore
-    @cache_by("settings.extensions")
+        self._override = override
+
+        self._minified = minified
+        self._output_style = output_style
+
+        self._custom = custom
+
+        self._path = PATH
+        self._bulma_path = PATH / BULMA / SASS
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def bulma_path(self) -> Path:
+        return self._bulma_path
+
+    @property
+    def settings(self) -> Dict[str, Any]:
+        return self._settings
+
+    @property
     def extensions(self) -> Iterable[str]:
-        extensions = self.settings.extensions
+        extensions = self._extensions
 
         if extensions == FIND:
             extensions = list(self.generate_extensions())
@@ -322,30 +273,30 @@ class Compiler:
 
     @property
     def custom(self) -> Iterable[str]:
-        return self.settings.custom
+        return self._custom
 
     @property
     def variables(self) -> Dict[str, Any]:
-        return self.settings.variables
+        return self._variables
 
     @property
     def themes(self) -> Iterable[str]:
-        return self.settings.themes
+        return self._themes
 
     def get_theme_variables(self, theme: str) -> Dict[str, Any]:
         return self.settings.get(THEME_VARIABLES.format(theme=theme), {})
 
     @property
-    def output_style(self) -> Dict[str, Any]:
-        return self.settings.output_style
+    def output_style(self) -> str:
+        return self._output_style
 
     @property
     def minified(self) -> bool:
-        return self.settings.minified
+        return self._minified
 
     @property
     def override(self) -> str:
-        return self.settings.override
+        return self._override
 
     def generate_variables(self, variables: Dict[str, Any]) -> Iterator[str]:
         for name, value in variables.items():
@@ -409,9 +360,11 @@ class Compiler:
     def compile_theme(self, theme: Optional[str] = None) -> str:
         source = NEWLINE.join(self.generate_theme(theme))
 
-        return sass.compile(
+        string: str = sass.compile(
             string=source, output_style=self.output_style, include_paths=[self.path.as_posix()]
         )
+
+        return string
 
     def compile_themes(self) -> Iterator[str]:
         yield self.compile_theme()
@@ -493,9 +446,11 @@ class Compiler:
             yield path.relative_to(root).as_posix()
 
     def compile_path(self, path: Union[str, Path]) -> str:
-        return sass.compile(
+        string: str = sass.compile(
             string=IMPORT.format(path=Path(path).as_posix(), output_style=self.output_style)
         )
+
+        return string
 
     def compile_custom_css(self) -> Iterator[str]:
         for path in self.get_custom_files():
